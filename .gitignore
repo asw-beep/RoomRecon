@@ -1,0 +1,67 @@
+# --- Local working notes -----------------------------------------------------
+# Personal planning notes. Not part of the project record.
+Plan/
+
+# --- Project artifacts -------------------------------------------------------
+# Reconstruction outputs are large, regenerable, and tier-specific. Never commit.
+storage/projects/*
+!storage/projects/.gitkeep
+
+# Reference papers: large binaries, third-party copyright. See Resource/README.md
+Resource/*.pdf
+
+# --- Media and 3D artifacts --------------------------------------------------
+*.mp4
+*.mov
+*.avi
+*.ply
+*.splat
+*.ksplat
+*.obj
+*.glb
+*.gltf
+*.pth
+*.ckpt
+*.npz
+
+# --- Python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# --- Node / viewer -----------------------------------------------------------
+node_modules/
+dist/
+build/
+.vite/
+*.local
+
+# --- Databases ---------------------------------------------------------------
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Environment and secrets -------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# --- Logs and profiling ------------------------------------------------------
+logs/
+*.log
+*.prof
+
+# --- Editors and OS ----------------------------------------------------------
+.vscode/*
+!.vscode/settings.json
+.idea/
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
