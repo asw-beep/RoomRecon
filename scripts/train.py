@@ -13,6 +13,7 @@ tier, pipeline version, resolved config, wall time and peak VRAM.
 """
 import argparse
 import datetime
+import hashlib
 import json
 import os
 import subprocess
@@ -68,6 +69,16 @@ def pipeline_version() -> str:
         return "unknown"
 
 
+def hardware() -> dict:
+    """Recorded verbatim from the machine (data-contracts.md), never inferred."""
+    out = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total,driver_version",
+                          "--format=csv,noheader,nounits"], capture_output=True, text=True)
+    if out.returncode != 0:
+        return {"gpu": None}
+    name, total, driver = [v.strip() for v in out.stdout.splitlines()[0].split(",")]
+    return {"gpu": name, "vram_total_mb": int(total), "driver": driver}
+
+
 class VramSampler(threading.Thread):
     """Whole-GPU used memory via nvidia-smi, so the desktop baseline is visible too."""
 
@@ -112,6 +123,8 @@ def main() -> int:
         "tier": detect_tier(),
         "pipeline_version": pipeline_version(),
         "config": str(cli.config),
+        "config_hash": "sha256:" + hashlib.sha256(cli.config.read_bytes()).hexdigest(),
+        "hardware": hardware(),
         "resolved": {"data_dir": data_dir, "result_dir": str(result_dir), **cfg},
         "command": cmd,
         "resumed_from": str(resume_pt) if resuming else None,
