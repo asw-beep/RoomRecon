@@ -1,0 +1,14 @@
+# M1 checkpoint/resume demonstration (ADR-005 constraint 2). Short on purpose: it is
+# run twice - SIGKILLed once mid-training, then resumed - and must stay cheap on quota.
+# Same settings as the T1 SIGKILL test (docs/m1-downloads.csv) so tiers compare.
+scene: drjohnson
+data_dir: ${ROOMRECON_DATA}/deepblending/db/drjohnson
+result_dir: ${ROOMRECON_WORK}/m1_resume_check
+strategy: mcmc
+trainer_args:
+  data_factor: 1
+  max_steps: 3000
+  eval_steps: [3000]
+  save_steps: [3000]
+  resume_every: 500
+  strategy.cap-max: 250000
