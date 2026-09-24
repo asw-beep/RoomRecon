@@ -48,15 +48,18 @@ Not yet made. What *is* decided now:
 
 ## Evidence required from M1
 
-| Measurement | COLMAP | ORB-SLAM3 |
+| Measurement (all T1) | COLMAP | ORB-SLAM3 |
 |---|---|---|
-| Builds and runs on T1 (WSL2) | TBD | TBD |
-| Wall-clock time on the reference scene | TBD | TBD |
-| Trajectory quality vs ground truth (TUM/EuRoC) | TBD | TBD |
-| Behaviour on a real handheld room loop | TBD | TBD |
-| Loop closure on a returning walk | n/a | TBD |
-| Output → 3DGS conversion effort | TBD | TBD |
-| Failure mode when tracking degrades | TBD | TBD |
+| Builds and runs on T1 (WSL2) | ✅ apt 3.7, CPU-only build, no patches | ✅ after 3 local patches (C++17, monocular-only targets, upstream `LoopClosing.h` bool→int bug) + a headless patch |
+| Wall-clock time on the reference scene | 128 images @960 px: extract 33 s, **exhaustive** match ~23 min, map 3.1 min. Exhaustive is O(n²); video needs the sequential matcher | TUM fr1_xyz 798 frames: 39 s. fr3_long_office 2585 frames: 115–120 s (~17–18 ms/frame, real time) |
+| Trajectory quality vs ground truth (TUM) | not measured (COLMAP not yet run on TUM) | Sim(3)-aligned keyframe ATE RMSE: fr1_xyz 9.3 / 9.3 / 9.0 mm; fr3_long_office 10.4 / 20.2 / 14.3 mm over a 22 m loop. 3 runs each, 1 map, 0 resets; ~2× run-to-run spread (nondeterministic) |
+| Behaviour on a real handheld room loop | **TBD — needs a phone video of a room** | **TBD — same video** |
+| Loop closure on a returning walk | n/a | ✅ detected in 3/3 fr3_long_office runs |
+| Output → 3DGS conversion effort | none: gsplat reads `sparse/0` directly (proven on south-building and drjohnson) | not yet tried. Outputs keyframe poses only, no 3DGS-ready points; needs COLMAP triangulation from fixed poses or an exported map |
+| Failure mode when tracking degrades | not yet observed | per-run nondeterminism above; a monocular init delay (3.5 s on fr1_xyz) loses the opening frames |
+
+Numbers and sources: `docs/m1-downloads.csv`. Nothing here is decided yet. The handheld
+row is the one that matters, since it is the product input and TUM is not.
 
 ## Decision criteria
 
