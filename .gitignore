@@ -8,7 +8,12 @@ storage/projects/*
 !storage/projects/.gitkeep
 
 # Reference papers: large binaries, third-party copyright. See Resource/README.md
-Resource/*.pdf
+Resource/**/*.pdf
+/*.pdf
+
+# Paper-writing templates (downloaded, third-party)
+Sample_Template*/
+Sample_Template*.zip
 
 # --- Media and 3D artifacts --------------------------------------------------
 *.mp4
