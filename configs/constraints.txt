@@ -1,0 +1,8 @@
+# Reconstruction stack pins, shared by T1 and T2 (ADR-005, Risk #4 environment drift).
+# Install everything with `pip install -c configs/constraints.txt ...` - some deps
+# (torchmetrics[image]) otherwise pull a newer torch built for a different CUDA.
+# Keep in step with PINS in scripts/verify_env.py.
+torch==2.5.1+cu121
+torchvision==0.20.1+cu121
+numpy==1.26.4
+gsplat==1.5.3
