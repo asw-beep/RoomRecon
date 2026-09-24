@@ -1,0 +1,128 @@
+diff --git a/examples/simple_trainer.py b/examples/simple_trainer.py
+index 6a30be7..eab0733 100644
+--- a/examples/simple_trainer.py
++++ b/examples/simple_trainer.py
+@@ -1,6 +1,7 @@
+ import json
+ import math
+ import os
++import random
+ import time
+ from collections import defaultdict
+ from dataclasses import dataclass, field
+@@ -46,6 +47,10 @@ class Config:
+     disable_viewer: bool = False
+     # Path to the .pt files. If provide, it will skip training and run evaluation only.
+     ckpt: Optional[List[str]] = None
++    # [roomrecon] Resume training from a full-state resume.pt written by resume_every.
++    resume: Optional[str] = None
++    # [roomrecon] Write <result_dir>/ckpts/resume.pt every N steps. 0 disables.
++    resume_every: int = 0
+     # Name of compression strategy to use
+     compression: Optional[Literal["png"]] = None
+     # Render trajectory path
+@@ -542,6 +547,76 @@ class Runner:
+             render_colors[~masks] = 0
+         return render_colors, render_alphas, info
+ 
++    def _save_resume(self, next_step: int, schedulers) -> None:
++        """[roomrecon] Full training state, unlike ckpt_*.pt which holds splats only.
++
++        Written to a temp file and renamed, so a kill mid-write (pre-emption) never
++        leaves a truncated resume.pt behind.
++        """
++        state = {
++            "next_step": next_step,
++            "max_steps": self.cfg.max_steps,
++            "splats": self.splats.state_dict(),
++            "optimizers": {k: o.state_dict() for k, o in self.optimizers.items()},
++            "pose_optimizers": [o.state_dict() for o in self.pose_optimizers],
++            "app_optimizers": [o.state_dict() for o in self.app_optimizers],
++            "bil_grid_optimizers": [o.state_dict() for o in self.bil_grid_optimizers],
++            "schedulers": [s.state_dict() for s in schedulers],
++            "strategy_state": self.strategy_state,
++            "rng": {
++                "torch": torch.get_rng_state(),
++                "cuda": torch.cuda.get_rng_state_all(),
++                "numpy": np.random.get_state(),
++                "python": random.getstate(),
++            },
++        }
++        if self.cfg.pose_opt:
++            state["pose_adjust"] = self.pose_adjust.state_dict()
++        if self.cfg.app_opt:
++            state["app_module"] = self.app_module.state_dict()
++        if self.cfg.use_bilateral_grid:
++            state["bil_grids"] = self.bil_grids.state_dict()
++        path = f"{self.ckpt_dir}/resume.pt"
++        torch.save(state, path + ".tmp")
++        os.replace(path + ".tmp", path)
++
++    def _load_resume(self, path: str, schedulers) -> int:
++        """[roomrecon] Restores _save_resume state. Returns the step to continue from."""
++        state = torch.load(path, map_location="cpu", weights_only=False)
++        if state["max_steps"] != self.cfg.max_steps:
++            raise ValueError(
++                f"resume.pt was written with max_steps={state['max_steps']}, "
++                f"config has {self.cfg.max_steps}; the LR schedule would not match"
++            )
++        # The Gaussian count changes during training. Replacing .data keeps the same
++        # Parameter object, which the optimizer already references.
++        for k, t in state["splats"].items():
++            self.splats[k].data = t.to(self.device)
++        for k, o in self.optimizers.items():
++            o.load_state_dict(state["optimizers"][k])
++        for group in ("pose_optimizers", "app_optimizers", "bil_grid_optimizers"):
++            for o, sd in zip(getattr(self, group), state[group]):
++                o.load_state_dict(sd)
++        for s, sd in zip(schedulers, state["schedulers"]):
++            s.load_state_dict(sd)
++        for k, v in state["strategy_state"].items():
++            cur = self.strategy_state.get(k)
++            dev = cur.device if torch.is_tensor(cur) else self.device
++            self.strategy_state[k] = v.to(dev) if torch.is_tensor(v) else v
++        if self.cfg.pose_opt:
++            self.pose_adjust.load_state_dict(state["pose_adjust"])
++        if self.cfg.app_opt:
++            self.app_module.load_state_dict(state["app_module"])
++        if self.cfg.use_bilateral_grid:
++            self.bil_grids.load_state_dict(state["bil_grids"])
++        rng = state["rng"]
++        torch.set_rng_state(rng["torch"])
++        torch.cuda.set_rng_state_all(rng["cuda"])
++        np.random.set_state(rng["numpy"])
++        random.setstate(rng["python"])
++        print(f"[roomrecon] resumed from {path} at step {state['next_step']}")
++        return state["next_step"]
++
+     def train(self):
+         cfg = self.cfg
+         device = self.device
+@@ -586,6 +661,11 @@ class Runner:
+                 )
+             )
+ 
++        if cfg.resume is not None:
++            if self.world_size > 1:
++                raise NotImplementedError("resume is single-GPU only")
++            init_step = self._load_resume(cfg.resume, schedulers)
++
+         trainloader = torch.utils.data.DataLoader(
+             self.trainset,
+             batch_size=cfg.batch_size,
+@@ -880,6 +960,15 @@ class Runner:
+             else:
+                 assert_never(self.cfg.strategy)
+ 
++            # [roomrecon] full-state checkpoint for pre-emptible tiers (ADR-005)
++            if (
++                cfg.resume_every > 0
++                and (step + 1) % cfg.resume_every == 0
++                and step + 1 < max_steps
++                and world_size == 1
++            ):
++                self._save_resume(step + 1, schedulers)
++
+             # eval the full set
+             if step in [i - 1 for i in cfg.eval_steps]:
+                 self.eval(step)
