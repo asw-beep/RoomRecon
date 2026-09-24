@@ -1,0 +1,4 @@
+# Shell and Python run inside WSL2 / Linux tiers; CRLF breaks bash.
+* text=auto
+*.sh text eol=lf
+*.py text eol=lf
