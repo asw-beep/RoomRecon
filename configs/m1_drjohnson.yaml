@@ -1,0 +1,16 @@
+# M1 reference scene. The same file runs on T1 and T2 so their timings are comparable.
+# Deep Blending "drjohnson": indoor room, 263 images at 1332x876, COLMAP poses shipped.
+scene: drjohnson
+data_dir: ${ROOMRECON_DATA}/deepblending/db/drjohnson
+result_dir: ${ROOMRECON_WORK}/m1_drjohnson
+# MCMC: cap-max is a hard ceiling on Gaussian count, so VRAM is bounded up front.
+strategy: mcmc
+trainer_args:
+  data_factor: 1
+  max_steps: 15000
+  eval_steps: [15000]   # gsplat defaults to 7000/30000, which skips the final model
+  save_steps: [15000]
+  ply_steps: [15000]
+  save_ply: true
+  resume_every: 1000
+  strategy.cap-max: 1000000
