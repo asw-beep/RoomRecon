@@ -50,17 +50,22 @@ Compute tiers (see `docs/adr/005-compute-strategy.md`):
 machine, requested not assumed.
 
 ### T1 — laptop environment (WSL2)
-- [ ] Stand up WSL2 Ubuntu-22.04; verify GPU passthrough (`nvidia-smi` inside WSL)
-- [ ] Pin a real Python env, 3.10/3.11 via conda or uv — the 3.12 WindowsApps stub is not
+- [x] Stand up WSL2 Ubuntu-22.04; verify GPU passthrough (`nvidia-smi` inside WSL)
+- [x] Pin a real Python env, 3.10/3.11 via conda or uv — the 3.12 WindowsApps stub is not
       viable for the 3DGS ecosystem
-- [ ] Install CUDA toolkit matching driver 581.86; verify `torch.cuda.is_available()`
-- [ ] Install COLMAP; run on a small public image set → sparse model
-- [ ] Build ORB-SLAM3; run on a TUM or EuRoC sequence → trajectory.
+- [x] Install CUDA toolkit matching driver 581.86; verify `torch.cuda.is_available()`
+- [x] Install COLMAP; run on a small public image set → sparse model
+- [x] Build ORB-SLAM3; run on a TUM or EuRoC sequence → trajectory.
       **ORB-SLAM3 is T1-only** — it is never rebuilt on T2 (ADR-005 constraint 1)
-- [ ] Train 3DGS on one known-good small scene end to end at reduced settings
-- [ ] Evaluate **gsplat** vs the original INRIA rasterizer for memory footprint at 6 GB
-- [ ] **Record peak VRAM, wall-clock time, and the exact settings that made it fit**
-- [ ] Render the trained scene in a browser splat viewer at a measured FPS
+- [x] Train 3DGS on one known-good small scene end to end at reduced settings
+- [~] ~~Evaluate **gsplat** vs the original INRIA rasterizer for memory footprint at 6 GB~~
+      **Proposed drop, for G1 review.** The question behind it — does 3DGS fit in 6 GB —
+      is answered: gsplat trains 1M Gaussians in ~2.2 GB on T1. gsplat is kept because
+      its MCMC strategy gives a hard Gaussian cap (bounded VRAM), it is Apache-2.0 where
+      INRIA is non-commercial, and it is what the resume patch targets. Building a second
+      CUDA extension to measure a constraint that no longer binds is not worth the time
+- [x] **Record peak VRAM, wall-clock time, and the exact settings that made it fit**
+- [x] Render the trained scene in a browser splat viewer at a measured FPS
 
 ### T2 — Kaggle environment (cold start)
 - [ ] `scripts/setup_t2.sh` — clone → deps → build CUDA extensions, from a bare session
@@ -80,7 +85,7 @@ machine, requested not assumed.
 
 ### Decisions and tooling
 - [ ] Write `docs/adr/004-pose-source.md` with the decision the T1 evidence supports
-- [ ] `scripts/verify_env.py` — one command, runs on **both** tiers, prints a pass/fail
+- [~] `scripts/verify_env.py` — one command, runs on **both** tiers, prints a pass/fail
       dependency table and identifies which tier it is on
 - [ ] Request the T3 campus machine with the ADR-005 spec (≥12 GB VRAM, Linux, SSH,
       Docker/sudo, persistent storage). Do not block on the answer.
