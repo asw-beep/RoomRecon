@@ -99,7 +99,9 @@ EOF
 
 # Results only: resume.pt / checkpoints also sit in the session output (for --continue)
 # and must not be pulled to E:. The listing is paginated, so ask for the largest page.
-RESULTS='(^|/)(verdict\.json|stages\.jsonl|m1_t2_artifact\.tar\.gz)$|\.log$'
+# No "/" in the pattern: Git Bash rewrites any argument containing one as a path, turning
+# "(^|/)" into "(^|C:/Program Files/Git/)" and every "\." into "/.", so nothing matched.
+RESULTS='^(verdict\.json|stages\.jsonl|m1_t2_artifact\.tar\.gz)$|\.log$'
 
 case "${1:-}" in
 check)
