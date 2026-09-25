@@ -24,6 +24,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import gpu  # noqa: E402
+
 PINS = {
     "python": "3.10",
     "torch": "2.5.1+cu121",
@@ -98,6 +101,18 @@ def check_gpu():
     )
 
 
+def check_gpu_inventory():
+    """Every GPU, and the one a job would be pinned to. More than one is normal (T4 x2)."""
+    gpus = gpu.inventory()
+    if not gpus:
+        return False, "nvidia-smi lists no GPU"
+    used = gpu.select(gpus)
+    names = ", ".join(f"{g['index']}:{g['name']}" for g in gpus)
+    if used is None:
+        return False, f"{len(gpus)} GPU(s) [{names}]; CUDA_VISIBLE_DEVICES matches none"
+    return True, f"{len(gpus)} GPU(s) [{names}]; jobs pinned to {used['index']}"
+
+
 def check_nvcc():
     nvcc = shutil.which("nvcc") or (
         "/usr/local/cuda-12.1/bin/nvcc" if Path("/usr/local/cuda-12.1/bin/nvcc").exists() else None
@@ -144,6 +159,7 @@ def check_disk():
 CHECKS = [
     ("python", check_python, {"T1", "T2"}),
     ("torch", check_pinned("torch"), {"T1", "T2"}),
+    ("gpu inventory", check_gpu_inventory, {"T1", "T2"}),
     ("gpu", check_gpu, {"T1", "T2"}),
     ("nvcc", check_nvcc, {"T1", "T2"}),
     ("ninja", check_binary("ninja", ["--version"]), {"T1", "T2"}),
