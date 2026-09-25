@@ -10,6 +10,7 @@ Each ADR records one decision, why it was made, what it costs, and what was reje
 | [003](003-modular-monolith.md) | Modular monolith, SQLite, local job worker | Accepted |
 | [004](004-pose-source.md) | Production pose source: COLMAP vs ORB-SLAM3 | 🔶 Deferred to M1 evidence |
 | [005](005-compute-strategy.md) | Three-tier compute: WSL2 laptop / Kaggle / campus | Accepted |
+| [007](007-kaggle-primary-compute.md) | Kaggle as the primary compute tier, laptop for interaction (amends 005) | 🔶 Proposed, G1 review |
 
 ## Format
 
