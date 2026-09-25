@@ -164,7 +164,13 @@ Produced by `src/reconstruction/gaussian/`. The measured record of one training 
 {
   "...envelope": "...",
   "tier": "T2",
-  "hardware": { "gpu": "Tesla P100", "vram_total_mb": 16280 },
+  "hardware": {
+    "gpus_present": 2,
+    "gpus": [{ "index": 0, "uuid": "GPU-…", "name": "Tesla T4", "vram_total_mib": 15360, "compute_cap": "7.5" },
+             { "index": 1, "uuid": "GPU-…", "name": "Tesla T4", "vram_total_mib": 15360, "compute_cap": "7.5" }],
+    "gpu_used": { "index": 0, "uuid": "GPU-…", "name": "Tesla T4" },
+    "driver": "580.159.04"
+  },
   "training": {
     "iterations": 30000,
     "wall_clock_s": 0.0,
@@ -182,6 +188,10 @@ Produced by `src/reconstruction/gaussian/`. The measured record of one training 
 
 Unmeasured values are `null`, never a placeholder number. `hardware` is recorded verbatim
 from the machine — this is what makes cross-tier comparison honest rather than misleading.
+It lists **every** GPU present and the one the job was pinned to: a machine can have more
+than one (Kaggle's T4 accelerator is T4 ×2), and a tier label must say so, e.g.
+"T2 (Kaggle, T4 ×2, 1 used)". A job uses exactly one GPU; peak VRAM refers to that one.
+The M1 launcher `scripts/train.py` already writes this `hardware` block into `run.json`.
 
 ---
 

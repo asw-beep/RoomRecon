@@ -10,6 +10,9 @@ resume.pt instead of starting over (ADR-005 constraint 2).
 Paths in the config may use ${ROOMRECON_DATA} and ${ROOMRECON_WORK}, which default to
 ~/roomrecon/datasets and ~/roomrecon/work. Every run writes <result_dir>/run.json with
 tier, pipeline version, resolved config, wall time and peak VRAM.
+
+The job is pinned to exactly one GPU (scripts/gpu.py): on a multi-GPU machine the
+trainer, the VRAM sampler and the hardware record all refer to the same device.
 """
 import argparse
 import datetime
@@ -26,6 +29,7 @@ import yaml
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
+import gpu  # noqa: E402
 from verify_env import TOOLCHAIN, detect_tier  # noqa: E402
 
 # Owned by this launcher; a config that sets them is rejected.
@@ -69,47 +73,97 @@ def pipeline_version() -> str:
         return "unknown"
 
 
-def hardware() -> dict:
-    """Recorded verbatim from the machine (data-contracts.md), never inferred."""
-    out = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total,driver_version",
-                          "--format=csv,noheader,nounits"], capture_output=True, text=True)
-    if out.returncode != 0:
-        return {"gpu": None}
-    name, total, driver = [v.strip() for v in out.stdout.splitlines()[0].split(",")]
-    return {"gpu": name, "vram_total_mb": int(total), "driver": driver}
-
-
 class VramSampler(threading.Thread):
-    """Whole-GPU used memory via nvidia-smi, so the desktop baseline is visible too."""
+    """Used memory of the pinned GPU via nvidia-smi, so the desktop baseline is visible too.
 
-    def __init__(self, every: float = 2.0):
+    Polling misses short spikes; the trainer's own torch peak (stats/train_*.json "mem")
+    is the primary number, this one shows what the whole device went through.
+    """
+
+    def __init__(self, uuid: str, every: float = 2.0):
         super().__init__(daemon=True)
-        self.every, self.samples, self.stop = every, [], threading.Event()
+        self.uuid, self.every, self.samples, self.stop = uuid, every, [], threading.Event()
 
     def run(self):
         while not self.stop.is_set():
-            out = subprocess.run(["nvidia-smi", "--query-gpu=memory.used",
-                                  "--format=csv,noheader,nounits"], capture_output=True, text=True)
-            if out.returncode == 0 and out.stdout.strip():
-                self.samples.append(int(out.stdout.split()[0]))
+            used = gpu.memory_used_mib(self.uuid)
+            if used is not None:
+                self.samples.append(used)
             self.stop.wait(self.every)
+
+
+def leg_status(rc: int) -> str:
+    """Negative return codes are signals (subprocess convention): the leg was killed."""
+    return "completed" if rc == 0 else ("killed" if rc < 0 else "failed")
+
+
+def read_stats(result_dir: Path) -> dict:
+    """gsplat's own structured stats (val_*: metrics, train_*: torch peak mem, num_GS).
+
+    A file that does not parse is recorded as an error, never fatal: the leg's outcome
+    must reach run.json even when one stats file is damaged.
+    """
+    stats = {}
+    for p in sorted(result_dir.glob("stats/*.json")):
+        try:
+            stats[p.stem] = json.loads(p.read_text())
+        except (OSError, ValueError) as exc:
+            stats[p.stem] = {"error": f"{type(exc).__name__}: {exc}"}
+    return stats
+
+
+def last_leg_completed(log: Path) -> bool:
+    try:
+        legs = json.loads(log.read_text())
+    except (OSError, ValueError):
+        return False
+    return bool(legs) and legs[-1].get("status") == "completed"
+
+
+def append_leg(log: Path, run: dict) -> None:
+    """One record per leg, written atomically so a kill mid-write cannot lose the history."""
+    history = []
+    if log.exists():
+        try:
+            history = json.loads(log.read_text())
+        except ValueError:
+            log.replace(log.with_suffix(".corrupt.json"))   # keep it for inspection
+    tmp = log.with_suffix(".tmp")
+    tmp.write_text(json.dumps(history + [run], indent=2))
+    os.replace(tmp, log)
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--config", required=True, type=Path)
     ap.add_argument("--fresh", action="store_true", help="ignore an existing resume.pt")
+    ap.add_argument("--result-dir", help="override the config's result_dir (repeat runs of one config)")
     cli = ap.parse_args()
 
     cfg = yaml.safe_load(cli.config.read_text())
-    data_dir, result_dir = resolve(cfg["data_dir"]), Path(resolve(cfg["result_dir"]))
+    data_dir = resolve(cfg["data_dir"])
+    result_dir = Path(resolve(cli.result_dir or cfg["result_dir"]))
     if not Path(data_dir, "sparse").is_dir():
         sys.exit(f"{data_dir} has no sparse/ - expected a COLMAP-format scene")
     trainer = TOOLCHAIN / "gsplat/examples/simple_trainer.py"
     if "_save_resume" not in trainer.read_text():
         sys.exit(f"{trainer} lacks the resume patch - run scripts/verify_env.py")
 
+    gpus = gpu.inventory()
+    used = gpu.select(gpus)
+    if used is None:
+        sys.exit(f"no usable GPU: found {len(gpus)}, CUDA_VISIBLE_DEVICES="
+                 f"{os.environ.get('CUDA_VISIBLE_DEVICES')!r}")
+    # Pin explicitly so the trainer cannot land on a different device than the one measured.
+    env = {**os.environ, "CUDA_VISIBLE_DEVICES": used["uuid"]}
+
     result_dir.mkdir(parents=True, exist_ok=True)
+    log = result_dir / "run.json"
+    # Idempotent: a finished run is not retrained. Re-running a whole session after a
+    # pre-emption therefore skips what finished and resumes what did not.
+    if not cli.fresh and last_leg_completed(log):
+        print(f"[train] {result_dir} already completed, skipping (--fresh to retrain)", flush=True)
+        return 0
     resume_pt = result_dir / "ckpts/resume.pt"
     resuming = resume_pt.exists() and not cli.fresh
 
@@ -124,35 +178,35 @@ def main() -> int:
         "pipeline_version": pipeline_version(),
         "config": str(cli.config),
         "config_hash": "sha256:" + hashlib.sha256(cli.config.read_bytes()).hexdigest(),
-        "hardware": hardware(),
-        "resolved": {"data_dir": data_dir, "result_dir": str(result_dir), **cfg},
+        "hardware": gpu.describe(gpus, used),
+        "resolved": {**cfg, "data_dir": data_dir, "result_dir": str(result_dir)},
         "command": cmd,
         "resumed_from": str(resume_pt) if resuming else None,
         "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
     }
     print(f"[train] tier {run['tier']}  version {run['pipeline_version']}"
+          f"  GPU {used['index']} ({used['name']}) of {len(gpus)}"
           f"  {'RESUMING' if resuming else 'fresh start'}", flush=True)
 
-    sampler = VramSampler()
+    sampler = VramSampler(used["uuid"])
     sampler.start()
     t0 = time.time()
     # simple_trainer imports its siblings (datasets/, utils) relative to examples/.
-    rc = subprocess.run(cmd, cwd=trainer.parent).returncode
+    rc = subprocess.run(cmd, cwd=trainer.parent, env=env).returncode
     sampler.stop.set()
 
     run.update({
+        "status": leg_status(rc),
         "exit_code": rc,
         "wall_s": round(time.time() - t0, 1),
         "gpu_used_mib_peak": max(sampler.samples, default=None),
         "gpu_used_mib_min": min(sampler.samples, default=None),
-        "eval": {p.name: json.loads(p.read_text()) for p in sorted(result_dir.glob("stats/val_*.json"))},
+        "stats": read_stats(result_dir),
     })
-    # One record per leg, so a resumed run keeps the history of the interrupted one.
-    log = result_dir / "run.json"
-    history = json.loads(log.read_text()) if log.exists() else []
-    log.write_text(json.dumps(history + [run], indent=2))
-    print(f"[train] exit {rc}, {run['wall_s']}s, peak GPU {run['gpu_used_mib_peak']} MiB "
-          f"(incl. baseline {run['gpu_used_mib_min']}) -> {log}", flush=True)
+    append_leg(log, run)
+    print(f"[train] {run['status']} (exit {rc}), {run['wall_s']}s, peak GPU "
+          f"{run['gpu_used_mib_peak']} MiB (incl. baseline {run['gpu_used_mib_min']}) -> {log}",
+          flush=True)
     return rc
 
 
