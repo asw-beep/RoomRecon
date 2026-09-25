@@ -106,11 +106,23 @@ def verdict(out: Path) -> dict:
     check("killed run resumed and finished", res["ok"] and res.get("resumed_from"),
           res["detail"] + ("" if res.get("resumed_from") else "; final leg did not resume"))
 
+    # What the session was asked for (run_t2.sh writes it first). Older sessions lack it.
+    session, _ = load_json(out / "logs" / "session.json")
+    session = session if isinstance(session, dict) else {}
+    if session.get("continue"):
+        restored, err = load_json(out / "logs" / "restore.json")
+        runs = (restored or {}).get("runs") or []
+        check("previous session restored (--continue)", runs,
+              err or (f"{len(runs)} run(s) restored: {', '.join(runs)}" if runs
+                      else "continue requested, nothing restored"))
+
     refs = {p.name: summarise_run(work, p.name) for p in sorted(work.glob(REF_PREFIX + "*"))
             if p.is_dir()}
     ref_psnr = [r["eval"]["psnr"] for r in refs.values() if r["ok"] and r["eval"].get("psnr") is not None]
-    check("uninterrupted references for the resume check", len(ref_psnr) >= 2,
-          f"{len(ref_psnr)} usable of {len(refs)} (need >= 2 for a noise band)")
+    need = max(2, int(session.get("resume_refs") or 2))
+    check("uninterrupted references for the resume check", len(ref_psnr) >= need,
+          f"{len(ref_psnr)} usable of {len(refs)} (need >= {need}: 2 for a noise band, "
+          f"or as many as the session asked for)")
 
     comparison = None
     if ref_psnr and res.get("eval") and res["eval"].get("psnr") is not None:

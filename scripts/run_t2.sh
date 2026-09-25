@@ -19,10 +19,14 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="${ROOMRECON_T2_OUT:-/kaggle/working}"
 SCRATCH="${ROOMRECON_T2_ROOT:-/tmp/roomrecon}"
 REFS="${ROOMRECON_RESUME_REFS:-2}"      # uninterrupted references for the resume noise band
+CONTINUE="${ROOMRECON_T2_CONTINUE:-0}"  # 1: push.sh --continue attached the previous output
 KILL_AFTER_STEP=1500                    # SIGKILL once resume.pt holds at least this step
 T0=$(date +%s)
 mkdir -p "$OUT/work" "$OUT/logs"
 STAGES="$OUT/stages.jsonl"; : > "$STAGES"
+# What this session was asked to do, so the verdict can hold it to that.
+printf '{"continue":%s,"resume_refs":%d}\n' "$([ "$CONTINUE" = 1 ] && echo true || echo false)" "$REFS" \
+  > "$OUT/logs/session.json"
 # Kaggle sets MPLBACKEND to the Jupyter inline backend, which our venv does not have.
 export MPLBACKEND=Agg PYTHONUNBUFFERED=1 CUDA_DEVICE_ORDER=PCI_BUS_ID
 export ROOMRECON_DATA="$SCRATCH/data" ROOMRECON_WORK="$OUT/work"
@@ -93,13 +97,24 @@ data() {
 
 restore() {
   # Previous session's output attached as input (push.sh push --continue): bring its
-  # work/ back. -n never overwrites anything this session already produced.
-  local prev n=0
-  for prev in /kaggle/input/*/work; do
-    [ -d "$prev" ] || continue
-    cp -rn "$prev/." "$OUT/work/" && n=$((n + 1)) && echo "restored $prev"
-  done
-  [ $n -gt 0 ] || echo "no previous session attached - fresh start"
+  # work/ back. -n never overwrites anything this session already produced. Where Kaggle
+  # mounts an attached notebook is not documented, so search for a work/ holding runs
+  # rather than assume one layout.
+  local prev found=()
+  while IFS= read -r prev; do
+    compgen -G "$prev/*/run.json" >/dev/null || continue
+    cp -rn "$prev/." "$OUT/work/" && found+=("$prev") && echo "restored $prev"
+  done < <(find /kaggle/input -maxdepth 6 -type d -name work 2>/dev/null)
+  python3 - "$OUT/logs/restore.json" "${found[@]}" <<'EOF'
+import json, sys
+from pathlib import Path
+out, sources = sys.argv[1], sys.argv[2:]
+runs = sorted({p.parent.name for s in sources for p in Path(s).glob("*/run.json")})
+json.dump({"restored_from": sources, "runs": runs}, open(out, "w"), indent=1)
+print(f"{len(runs)} run(s) restored: {runs}" if runs else "no previous session attached - fresh start")
+EOF
+  # Asked to continue but found nothing: stop before a fresh start re-spends the GPU time.
+  [ "$CONTINUE" != 1 ] || [ ${#found[@]} -gt 0 ]
 }
 
 baseline() { python scripts/train.py --config configs/m1_drjohnson.yaml; }
@@ -180,7 +195,7 @@ stage "pin gpu"      required    pin_gpu
 stage "setup"        required    setup
 stage "verify env"   required    verify
 stage "data"         required    data
-stage "restore"      best_effort restore
+stage "restore"      "$([ "$CONTINUE" = 1 ] && echo required || echo best_effort)" restore
 stage "baseline"     required    baseline
 stage "references"   required    references
 stage "resume check" required    resume_check

@@ -79,6 +79,36 @@ class Verdict(unittest.TestCase):
         self.assertIn("uninterrupted references for the resume check",
                       self.failed(t2_verdict.verdict(self.out)))
 
+    def write_session(self, **kw):
+        (self.out / "logs").mkdir(exist_ok=True)
+        (self.out / "logs/session.json").write_text(json.dumps(kw))
+
+    def test_fewer_references_than_asked_fails(self):
+        self.write_passing_session()
+        self.write_session(resume_refs=4)
+        self.write_run("m1_resume_ref_3", [leg(psnr=25.3)])
+        self.assertIn("uninterrupted references for the resume check",
+                      self.failed(t2_verdict.verdict(self.out)))
+        self.write_run("m1_resume_ref_4", [leg(psnr=25.3)])
+        self.assertTrue(t2_verdict.verdict(self.out)["passed"])
+
+    def test_continue_must_restore_something(self):
+        self.write_passing_session()
+        self.write_session(**{"continue": True, "resume_refs": 2})
+        self.assertIn("previous session restored (--continue)", self.failed(t2_verdict.verdict(self.out)))
+        (self.out / "logs/restore.json").write_text(json.dumps({"restored_from": [], "runs": []}))
+        self.assertIn("previous session restored (--continue)", self.failed(t2_verdict.verdict(self.out)))
+        (self.out / "logs/restore.json").write_text(
+            json.dumps({"restored_from": ["/kaggle/input/x/work"], "runs": ["m1_drjohnson"]}))
+        self.assertTrue(t2_verdict.verdict(self.out)["passed"])
+
+    def test_fresh_session_has_no_restore_check(self):
+        self.write_passing_session()
+        self.write_session(**{"continue": False, "resume_refs": 2})
+        v = t2_verdict.verdict(self.out)
+        self.assertTrue(v["passed"])
+        self.assertNotIn("previous session restored (--continue)", [c["check"] for c in v["checks"]])
+
     def test_damaged_inputs_fail_their_check_only(self):
         self.write_passing_session()
         (self.out / "verify_env.json").write_text("{")
