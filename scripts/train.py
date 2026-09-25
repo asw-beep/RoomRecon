@@ -156,6 +156,17 @@ def main() -> int:
                  f"{os.environ.get('CUDA_VISIBLE_DEVICES')!r}")
     # Pin explicitly so the trainer cannot land on a different device than the one measured.
     env = {**os.environ, "CUDA_VISIBLE_DEVICES": used["uuid"]}
+    # Optional explicit train/test split (JSON: split name -> image names), read by the
+    # gsplat split patch. Without it gsplat holds out every Nth image.
+    env.pop("ROOMRECON_SPLIT", None)
+    split_file = None
+    if cfg.get("split"):
+        split_file = Path(resolve(cfg["split"]))
+        if not split_file.is_file():
+            sys.exit(f"split file {split_file} not found")
+        if "ROOMRECON_SPLIT" not in (trainer.parent / "datasets/colmap.py").read_text():
+            sys.exit(f"{trainer.parent} lacks the split patch - run scripts/verify_env.py")
+        env["ROOMRECON_SPLIT"] = str(split_file)
 
     result_dir.mkdir(parents=True, exist_ok=True)
     log = result_dir / "run.json"
@@ -180,6 +191,8 @@ def main() -> int:
         "config_hash": "sha256:" + hashlib.sha256(cli.config.read_bytes()).hexdigest(),
         "hardware": gpu.describe(gpus, used),
         "resolved": {**cfg, "data_dir": data_dir, "result_dir": str(result_dir)},
+        "split": ({"file": str(split_file),
+                   "sha256": hashlib.sha256(split_file.read_bytes()).hexdigest()} if split_file else None),
         "command": cmd,
         "resumed_from": str(resume_pt) if resuming else None,
         "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),

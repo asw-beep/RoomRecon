@@ -142,6 +142,14 @@ def check_resume_patch():
     return ok, "applied" if ok else "missing: git apply scripts/patches/gsplat-1.5.3-resume.patch"
 
 
+def check_split_patch():
+    dataset = TOOLCHAIN / "gsplat/examples/datasets/colmap.py"
+    if not dataset.exists():
+        return False, f"{dataset} not found"
+    ok = "ROOMRECON_SPLIT" in dataset.read_text()
+    return ok, "applied" if ok else "missing: git apply scripts/patches/gsplat-1.5.3-split.patch"
+
+
 def check_orbslam():
     lib = TOOLCHAIN / "ORB_SLAM3/lib/libORB_SLAM3.so"
     exe = TOOLCHAIN / "ORB_SLAM3/Examples/Monocular/mono_tum"
@@ -166,6 +174,7 @@ CHECKS = [
     ("numpy", check_pinned("numpy"), {"T1", "T2"}),
     ("gsplat", check_pinned("gsplat"), {"T1", "T2"}),
     ("gsplat resume patch", check_resume_patch, {"T1", "T2"}),
+    ("gsplat split patch", check_split_patch, {"T2"}),
     ("fused_ssim", check_import("fused_ssim"), {"T1", "T2"}),
     ("torchmetrics", check_import("torchmetrics"), {"T1", "T2"}),
     ("disk", check_disk, {"T1", "T2"}),

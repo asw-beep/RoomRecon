@@ -1,0 +1,63 @@
+diff --git a/examples/datasets/colmap.py b/examples/datasets/colmap.py
+index 6c21f2c..17002ea 100644
+--- a/examples/datasets/colmap.py
++++ b/examples/datasets/colmap.py
+@@ -363,7 +363,19 @@ class Dataset:
+         self.patch_size = patch_size
+         self.load_depths = load_depths
+         indices = np.arange(len(self.parser.image_names))
+-        if split == "train":
++        # [roomrecon] An explicit split file (JSON: split name -> image names) replaces
++        # the every-Nth-image rule, so a dataset's own test frames can be used. A listed
++        # name that is not in the model is an error, never silently dropped.
++        split_file = os.environ.get("ROOMRECON_SPLIT")
++        if split_file:
++            with open(split_file) as f:
++                names = json.load(f).get(split, [])
++            lookup = {n: i for i, n in enumerate(self.parser.image_names)}
++            missing = [n for n in names if n not in lookup]
++            if missing:
++                raise ValueError(f"{split_file}: {len(missing)} '{split}' image(s) not in the model, e.g. {missing[:3]}")
++            self.indices = np.array(sorted(lookup[n] for n in names), dtype=np.int64)
++        elif split == "train":
+             self.indices = indices[indices % self.parser.test_every != 0]
+         else:
+             self.indices = indices[indices % self.parser.test_every == 0]
+diff --git a/examples/simple_trainer.py b/examples/simple_trainer.py
+index eab0733..49eac17 100644
+--- a/examples/simple_trainer.py
++++ b/examples/simple_trainer.py
+@@ -349,6 +349,12 @@ class Runner:
+             load_depths=cfg.depth_loss,
+         )
+         self.valset = Dataset(self.parser, split="val")
++        # [roomrecon] Optional second test set from the split file, e.g. a separate
++        # capture of the same room ("test with a different sequence").
++        self.xseqset = None
++        if os.environ.get("ROOMRECON_SPLIT"):
++            xseq = Dataset(self.parser, split="xseq")
++            self.xseqset = xseq if len(xseq) else None
+         self.scene_scale = self.parser.scene_scale * 1.1 * cfg.global_scale
+         print("Scene scale:", self.scene_scale)
+ 
+@@ -972,6 +978,8 @@ class Runner:
+             # eval the full set
+             if step in [i - 1 for i in cfg.eval_steps]:
+                 self.eval(step)
++                if self.xseqset is not None:
++                    self.eval(step, stage="xseq")
+                 self.render_traj(step)
+ 
+             # run compression
+@@ -1001,7 +1009,10 @@ class Runner:
+         world_size = self.world_size
+ 
+         valloader = torch.utils.data.DataLoader(
+-            self.valset, batch_size=1, shuffle=False, num_workers=1
++            self.xseqset if stage == "xseq" else self.valset,
++            batch_size=1,
++            shuffle=False,
++            num_workers=1,
+         )
+         ellipse_time = 0
+         metrics = defaultdict(list)

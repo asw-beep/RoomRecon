@@ -63,12 +63,17 @@ pip install -q -c "$C" torch torchvision --index-url https://download.pytorch.or
 pip install -q -c "$C" numpy ninja gsplat
 phase torch
 
-echo "=== gsplat examples + RoomRecon resume patch ==="
+echo "=== gsplat examples + RoomRecon patches (resume, then split) ==="
 G="$ROOMRECON_TOOLCHAIN/gsplat"
 [ -d "$G" ] || git clone -q --depth 1 --branch v1.5.3 https://github.com/nerfstudio-project/gsplat.git "$G"
-git -C "$G" apply --check "$REPO/scripts/patches/gsplat-1.5.3-resume.patch" 2>/dev/null \
-  && git -C "$G" apply "$REPO/scripts/patches/gsplat-1.5.3-resume.patch" \
-  || grep -q _save_resume "$G/examples/simple_trainer.py"   # already applied
+# apply_patch <file> <marker>: apply once; a rerun finds the marker and skips it.
+apply_patch() {
+  git -C "$G" apply --check "$REPO/scripts/patches/$1" 2>/dev/null \
+    && git -C "$G" apply "$REPO/scripts/patches/$1" \
+    || grep -rq "$2" "$G/examples"
+}
+apply_patch gsplat-1.5.3-resume.patch _save_resume
+apply_patch gsplat-1.5.3-split.patch ROOMRECON_SPLIT   # made on top of the resume patch
 pip install -q -c "$C" \
   "git+https://github.com/rmbrualla/pycolmap@cc7ea4b7301720ac29287dbe450952511b32125e" \
   viser \
