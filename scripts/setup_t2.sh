@@ -10,7 +10,9 @@
 # Prints the wall time of every phase - T2 setup cost counts against the weekly GPU
 # quota and is an M1 baseline.
 #
-# STATUS: written from the T1 install; not yet run on Kaggle.
+# STATUS: written from the T1 install; not yet run on Kaggle. Top-level packages without a
+# pin in constraints.txt float; run_t2.sh saves `pip freeze` of every session to
+# logs/env_freeze.txt, and the first passing run's freeze becomes the lock file.
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 ROOT="${ROOMRECON_T2_ROOT:-/tmp/roomrecon}"   # scratch, not /kaggle/working (outputs)
@@ -25,14 +27,20 @@ phase() { local now; now=$(date +%s); echo "--- [$((now-LAST))s] $1 done"; LAST=
 
 echo "=== system ==="
 . /etc/os-release; echo "$PRETTY_NAME"
-nvidia-smi --query-gpu=name,memory.total,compute_cap,driver_version --format=csv,noheader
-ARCH=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1)
+nvidia-smi --query-gpu=index,name,memory.total,compute_cap,driver_version --format=csv,noheader
+# Build kernels for the GPU the job is pinned to (run_t2.sh exports its UUID); a machine
+# may have several, and nvidia-smi prints one line per GPU.
+if [ -n "${CUDA_VISIBLE_DEVICES:-}" ]; then
+  ARCH=$(nvidia-smi --id="${CUDA_VISIBLE_DEVICES%%,*}" --query-gpu=compute_cap --format=csv,noheader)
+else
+  ARCH=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1)
+fi
 export TORCH_CUDA_ARCH_LIST="$ARCH"   # build kernels for this GPU only
 
 echo "=== python 3.10 venv (uv) ==="
-pip install -q uv
-uv python install 3.10
-uv venv --clear --seed -p 3.10 "$VENV"   # --clear: a rerun in the same session starts clean
+pip install -q uv==0.11.2
+uv python install 3.10.12             # the exact interpreter T1 measured (m1-downloads.csv)
+uv venv --clear --seed -p 3.10.12 "$VENV"   # --clear: a rerun in the same session starts clean
 source "$VENV/bin/activate"
 phase python
 
@@ -66,7 +74,7 @@ pip install -q -c "$C" \
   viser \
   "git+https://github.com/nerfstudio-project/nerfview@4538024fe0d15fd1a0e4d760f3695fc44ca72787" \
   "imageio[ffmpeg]" scikit-learn tqdm "torchmetrics[image]" opencv-python "tyro>=0.8.8" \
-  Pillow tensorboard tensorly pyyaml matplotlib splines
+  Pillow tensorboard tensorly pyyaml matplotlib splines huggingface_hub
 # setup.py imports torch, so no build isolation
 pip install -q --no-build-isolation -c "$C" \
   "git+https://github.com/rahul-goel/fused-ssim@328dc9836f513d00c4b5bc38fe30478b4435cbb5"
