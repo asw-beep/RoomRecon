@@ -1,0 +1,15 @@
+{
+  "id": "KAGGLE_USERNAME/roomrecon-m1-mushroom-train",
+  "title": "roomrecon-m1-mushroom-train",
+  "code_file": "roomrecon-m1-mushroom-train.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "enable_gpu": true,
+  "machine_shape": "NvidiaTeslaT4"
+}

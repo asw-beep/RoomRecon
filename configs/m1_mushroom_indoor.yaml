@@ -1,0 +1,27 @@
+# M1 MuSHRoom experiment, "indoor" variant: the baseline plus three gsplat options aimed
+# at rooms. Each is one flag in gsplat 1.5.3; none needs data beyond RGB + poses:
+#   depth_loss          depth from the sparse SfM points seen by each training image
+#   use_bilateral_grid  per-image colour/exposure correction, applied in training only,
+#                       so the saved Gaussians evaluate without it
+#   antialiased         anti-aliased rasterisation (less shimmer as distance changes)
+# pose_opt is left out on purpose: it refines only the training cameras, so the fixed test
+# cameras would drift from the scene and the scores would measure that drift.
+# Otherwise identical to m1_mushroom_baseline.yaml, which it is compared against.
+scene: mushroom
+data_dir: ${ROOMRECON_DATA}/mushroom/${MUSHROOM_ROOM}/${MUSHROOM_ARM}
+split: ${ROOMRECON_DATA}/mushroom/${MUSHROOM_ROOM}/${MUSHROOM_ARM}/split.json
+result_dir: ${ROOMRECON_WORK}/mushroom_${MUSHROOM_ROOM}_${MUSHROOM_ARM}_indoor
+strategy: mcmc
+trainer_args:
+  data_factor: 1          # 738x994 already
+  max_steps: 15000
+  eval_steps: [3000, 7000, 15000]   # the first pass saw quality peak early, then fall
+  save_steps: [15000]
+  ply_steps: [15000]
+  save_ply: true
+  disable_video: true
+  resume_every: 1000
+  strategy.cap-max: 1000000
+  depth_loss: true
+  use_bilateral_grid: true
+  antialiased: true

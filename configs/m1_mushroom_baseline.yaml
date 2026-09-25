@@ -1,0 +1,20 @@
+# M1 MuSHRoom experiment (ADR-006 evidence): same trainer settings as m1_drjohnson, so the
+# T2 timings compare. One file serves every room and pose source:
+#   MUSHROOM_ROOM = koivu | vr_room      MUSHROOM_ARM = device | sfm
+# Data comes from scripts/mushroom_prepare.py; split.json holds the dataset's own test
+# frames (val) and the separate test walk (xseq), evaluated at the same steps.
+scene: mushroom
+data_dir: ${ROOMRECON_DATA}/mushroom/${MUSHROOM_ROOM}/${MUSHROOM_ARM}
+split: ${ROOMRECON_DATA}/mushroom/${MUSHROOM_ROOM}/${MUSHROOM_ARM}/split.json
+result_dir: ${ROOMRECON_WORK}/mushroom_${MUSHROOM_ROOM}_${MUSHROOM_ARM}_baseline
+strategy: mcmc
+trainer_args:
+  data_factor: 1          # 738x994 already
+  max_steps: 15000
+  eval_steps: [3000, 7000, 15000]   # the first pass saw quality peak early, then fall
+  save_steps: [15000]
+  ply_steps: [15000]
+  save_ply: true
+  disable_video: true
+  resume_every: 1000
+  strategy.cap-max: 1000000
