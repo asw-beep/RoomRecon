@@ -1,8 +1,10 @@
 #!/bin/bash
 # Everything M1 needs from a T2 (Kaggle) session, headless. The notebook is two lines:
 #
-#   !git clone --depth 1 https://github.com/asw-beep/RoomRecon.git
+#   !rm -rf RoomRecon && git clone --depth 1 https://github.com/asw-beep/RoomRecon.git
 #   !bash RoomRecon/scripts/run_t2.sh
+#
+# The rm makes a rerun in the same session pick up the latest push instead of a stale clone.
 #
 # Needs: GPU accelerator on, internet on, the drjohnson dataset attached as input.
 # Produces /kaggle/working/m1_t2_artifact.tar.gz - the download artifact (see
@@ -11,6 +13,9 @@ set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 OUT=/kaggle/working
 T0=$(date +%s)
+# Kaggle sets MPLBACKEND to the Jupyter inline backend, which our venv does not have;
+# matplotlib (pulled in by torchmetrics) then fails on import. We are headless anyway.
+export MPLBACKEND=Agg
 
 echo "=== 1/4 setup ==="
 bash "$REPO/scripts/setup_t2.sh" 2>&1 | tee "$OUT/setup_t2.log"

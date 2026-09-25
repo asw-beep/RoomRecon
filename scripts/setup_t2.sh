@@ -16,6 +16,7 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 ROOT="${ROOMRECON_T2_ROOT:-/tmp/roomrecon}"   # scratch, not /kaggle/working (outputs)
 VENV="$ROOT/venv"
 export ROOMRECON_TOOLCHAIN="$ROOT/toolchain"
+export MPLBACKEND=Agg   # Kaggle's inline Jupyter backend is not in our venv
 C="$REPO/configs/constraints.txt"
 mkdir -p "$ROOT" "$ROOMRECON_TOOLCHAIN"
 
@@ -31,7 +32,7 @@ export TORCH_CUDA_ARCH_LIST="$ARCH"   # build kernels for this GPU only
 echo "=== python 3.10 venv (uv) ==="
 pip install -q uv
 uv python install 3.10
-uv venv --seed -p 3.10 "$VENV"
+uv venv --clear --seed -p 3.10 "$VENV"   # --clear: a rerun in the same session starts clean
 source "$VENV/bin/activate"
 phase python
 

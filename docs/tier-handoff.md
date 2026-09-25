@@ -36,7 +36,7 @@ New notebook → Settings: **Accelerator GPU T4 ×2**, **Internet on** → Add I
 dataset. One cell:
 
 ```bash
-!git clone --depth 1 https://github.com/asw-beep/RoomRecon.git
+!rm -rf RoomRecon && git clone --depth 1 https://github.com/asw-beep/RoomRecon.git
 !bash RoomRecon/scripts/run_t2.sh
 ```
 
